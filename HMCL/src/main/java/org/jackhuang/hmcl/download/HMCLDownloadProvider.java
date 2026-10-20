@@ -29,56 +29,55 @@ import org.jackhuang.hmcl.game.GameComponentType;
 import org.jackhuang.hmcl.game.HMCLCacheRepository;
 import org.jackhuang.hmcl.setting.DownloadSource;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.util.i18n.LocaleUtils;
 import org.jackhuang.hmcl.util.versioning.GameVersionNumber;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+/// Download provider used by the launcher.
+///
+/// Only the official upstream servers are contacted. Mirrored sources are used exclusively when the
+/// user explicitly selects [DownloadSource#MIRROR]; no mirror is injected automatically, so the
+/// behaviour does not depend on the region the launcher runs in, nor on third-party metadata hosts.
+///
 /// @author Glavo
 @NotNullByDefault
 public final class HMCLDownloadProvider extends DownloadProvider {
+    /// Source preference used for version lists.
     private volatile DownloadSource versionListSource = DownloadSource.DEFAULT;
+
+    /// Source preference used for downloaded files.
     private volatile DownloadSource fileSource = DownloadSource.DEFAULT;
 
+    /// Returns the candidate list for one URL pair.
+    ///
+    /// @param source      the source preference; anything but [DownloadSource#MIRROR] yields the official URL only
+    /// @param defaultUrl  the official URL
+    /// @param bmclapiUrl  the mirrored URL, only used when `source` is [DownloadSource#MIRROR]
+    /// @return the ordered candidates
     private static DownloadCandidates getCandidates(
             DownloadSource source,
             WebURL defaultUrl, WebURL bmclapiUrl
     ) {
-        if (LocaleUtils.IS_CHINA_MAINLAND) {
-            return switch (source) {
-                case DEFAULT, OFFICIAL -> DownloadCandidates.of(defaultUrl, bmclapiUrl);
-                case MIRROR -> DownloadCandidates.of(bmclapiUrl, defaultUrl);
-            };
-        } else {
-            return switch (source) {
-                case DEFAULT, OFFICIAL -> DownloadCandidates.of(defaultUrl);
-                case MIRROR -> DownloadCandidates.of(bmclapiUrl, defaultUrl);
-            };
-        }
+        return switch (source) {
+            case DEFAULT, OFFICIAL -> DownloadCandidates.of(defaultUrl);
+            case MIRROR -> DownloadCandidates.of(bmclapiUrl, defaultUrl);
+        };
     }
 
+    /// Returns the candidate list for arbitrary URLs.
+    ///
+    /// @param source the source preference; anything but [DownloadSource#MIRROR] yields the URLs unchanged
+    /// @param rules  the mirror rules applied when `source` is [DownloadSource#MIRROR]
+    /// @param urls   the official URLs
+    /// @return the ordered candidates
     private static DownloadCandidates getCandidates(DownloadSource source, List<MirrorRule> rules, List<String> urls) {
         if (urls.isEmpty()) {
             throw new IllegalArgumentException("urls cannot be empty");
         }
 
-        // true means prefer mirror, false means prefer official, null means do not use mirror
-        @Nullable Boolean mirrorFirst;
-        if (LocaleUtils.IS_CHINA_MAINLAND) {
-            mirrorFirst = switch (source) {
-                case DEFAULT, MIRROR -> true;
-                case OFFICIAL -> false;
-            };
-        } else {
-            mirrorFirst = switch (source) {
-                case DEFAULT, OFFICIAL -> null;
-                case MIRROR -> true;
-            };
-        }
-
-        if (mirrorFirst == null) {
+        if (source != DownloadSource.MIRROR) {
             return DownloadCandidates.of(urls.stream().map(DownloadCandidate::of).toArray(DownloadCandidate[]::new));
         }
 
@@ -92,32 +91,31 @@ public final class HMCLDownloadProvider extends DownloadProvider {
             }
 
             @Nullable DownloadCandidate mirrorCandidate = null;
-            boolean fallback = false;
             for (MirrorRule rule : rules) {
                 if (url.startsWith(rule.source)) {
                     mirrorCandidate = DownloadCandidate.of(rule.target + url.substring(rule.source.length()));
-                    fallback = rule.fallback;
                     break;
                 }
             }
 
-            if (mirrorCandidate == null) {
+            candidates.add(Objects.requireNonNullElse(mirrorCandidate, candidate));
+            if (mirrorCandidate != null) {
                 candidates.add(candidate);
-            } else if (mirrorFirst && !fallback) {
-                candidates.add(mirrorCandidate);
-                candidates.add(candidate);
-            } else {
-                candidates.add(candidate);
-                candidates.add(mirrorCandidate);
             }
         }
 
         return DownloadCandidates.of(List.copyOf(candidates));
     }
 
+    /// Root of the mirror used when the user explicitly selects [DownloadSource#MIRROR].
     private final String bmclRoot;
+
+    /// Mirror rules mapping official URLs onto [#bmclRoot].
     private final List<MirrorRule> rules;
 
+    /// Creates a provider.
+    ///
+    /// @param bmclRoot the root of the mirror used when the user explicitly selects [DownloadSource#MIRROR]
     public HMCLDownloadProvider(String bmclRoot) {
         this.bmclRoot = bmclRoot;
         this.rules = List.of(
@@ -135,18 +133,7 @@ public final class HMCLDownloadProvider extends DownloadProvider {
                 new MirrorRule("https://dl.liteloader.com/versions", bmclRoot + "/maven"),
                 new MirrorRule("https://meta.fabricmc.net", bmclRoot + "/fabric-meta"),
                 new MirrorRule("https://maven.fabricmc.net", bmclRoot + "/maven"),
-                new MirrorRule("https://authlib-injector.yushi.moe", bmclRoot + "/mirrors/authlib-injector"),
-                new MirrorRule("https://repo1.maven.org/maven2", "https://mirrors.cloud.tencent.com/nexus/repository/maven-public"),
-                new MirrorRule("https://repo.maven.apache.org/maven2", "https://mirrors.cloud.tencent.com/nexus/repository/maven-public"),
-                new MirrorRule("https://hmcl.glavo.site/metadata/cleanroom", "https://alist.8mi.tech/d/mirror/HMCL-Metadata/Auto/cleanroom"),
-                new MirrorRule("https://hmcl.glavo.site/metadata/fmllibs", "https://alist.8mi.tech/d/mirror/HMCL-Metadata/Auto/fmllibs"),
-                new MirrorRule("https://zkitefly.github.io/unlisted-versions-of-minecraft", "https://alist.8mi.tech/d/mirror/unlisted-versions-of-minecraft/Auto"),
-
-                // https://github.com/mcmod-info-mirror/mcim-rust-api
-                new MirrorRule("https://api.modrinth.com", "https://mod.mcimirror.top/modrinth", true),
-                new MirrorRule("https://cdn.modrinth.com", "https://mod.mcimirror.top", true),
-                new MirrorRule("https://api.curseforge.com", "https://mod.mcimirror.top/curseforge", true),
-                new MirrorRule("https://edge.forgecdn.net", "https://mod.mcimirror.top", true)
+                new MirrorRule("https://authlib-injector.yushi.moe", bmclRoot + "/mirrors/authlib-injector")
         );
     }
 
@@ -155,35 +142,13 @@ public final class HMCLDownloadProvider extends DownloadProvider {
         assert (gameVersion == null) == (type == GameComponentType.GAME);
         switch (type) {
             case FORGE -> {
-                Task<ComponentRemoteVersionList<ForgeRemoteVersion>> fetchOfficial = ForgeRemoteVersion.fetchAsync(this, gameVersion);
-
-                DownloadSource source = versionListSource;
-                if (!LocaleUtils.IS_CHINA_MAINLAND && (source == DownloadSource.DEFAULT || source == DownloadSource.OFFICIAL)) {
-                    return fetchOfficial;
-                }
-
-                Task<ComponentRemoteVersionList<ForgeRemoteVersion>> fetchBMCL = ForgeRemoteVersion.fetchBMCLAsync(this, bmclRoot, gameVersion);
-                if (source == DownloadSource.MIRROR) {
-                    return new FallbackTask<>(fetchBMCL, fetchOfficial);
-                } else {
-                    return new FallbackTask<>(fetchOfficial, fetchBMCL);
-                }
+                return ForgeRemoteVersion.fetchAsync(this, gameVersion);
             }
             case NEO_FORGE -> {
-                Task<ComponentRemoteVersionList<NeoForgeRemoteVersion>> fetchOfficial = NeoForgeRemoteVersion.fetchAsync(this, gameVersion);
-
-                DownloadSource source = versionListSource;
-                if (!LocaleUtils.IS_CHINA_MAINLAND && (source == DownloadSource.DEFAULT || source == DownloadSource.OFFICIAL)) {
-                    return fetchOfficial;
-                }
-                Task<ComponentRemoteVersionList<NeoForgeRemoteVersion>> fetchBMCL = NeoForgeRemoteVersion.fetchBMCLAsync(bmclRoot, gameVersion);
-                if (source == DownloadSource.MIRROR || source == DownloadSource.DEFAULT) {
-                    return new FallbackTask<>(fetchBMCL, fetchOfficial);
-                } else {
-                    return new FallbackTask<>(fetchOfficial, fetchBMCL);
-                }
+                return NeoForgeRemoteVersion.fetchAsync(this, gameVersion);
             }
             case OPTIFINE -> {
+                // OptiFine publishes no machine-readable version list; BMCLAPI is the only source.
                 return OptiFineRemoteVersion.fetchBMCLAsync(this, bmclRoot, gameVersion);
             }
         }
@@ -191,10 +156,16 @@ public final class HMCLDownloadProvider extends DownloadProvider {
         return super.fetchVersionsAsync(type, gameVersion);
     }
 
+    /// Sets the source preference for downloaded files.
+    ///
+    /// @param fileSource the new preference
     public void setFileSource(DownloadSource fileSource) {
         this.fileSource = Objects.requireNonNull(fileSource);
     }
 
+    /// Sets the source preference for version lists.
+    ///
+    /// @param versionListSource the new preference
     public void setVersionListSource(DownloadSource versionListSource) {
         this.versionListSource = Objects.requireNonNull(versionListSource);
     }
@@ -224,9 +195,7 @@ public final class HMCLDownloadProvider extends DownloadProvider {
 
     @Override
     public DownloadCandidates getCleanroomVersionListCandidates() {
-        return LocaleUtils.IS_CHINA_MAINLAND
-                ? DownloadCandidates.of(CleanroomRemoteVersion.LOADER_LIST_URL, WebURL.parse("https://alist.8mi.tech/d/mirror/HMCL-Metadata/Auto/cleanroom/index.json"))
-                : DownloadCandidates.of(CleanroomRemoteVersion.LOADER_LIST_URL);
+        return DownloadCandidates.of(CleanroomRemoteVersion.LOADER_LIST_URL);
     }
 
     @Override
@@ -248,49 +217,10 @@ public final class HMCLDownloadProvider extends DownloadProvider {
         );
     }
 
-    @NotNullByDefault
-    private static final class FallbackTask<T> extends Task<T> {
-
-        private final Task<? extends T> task;
-        private final Task<? extends T> fallback;
-
-        private List<Task<?>> dependencies = List.of();
-
-        public FallbackTask(Task<? extends T> task, Task<? extends T> fallback) {
-            this.task = task;
-            this.fallback = fallback;
-        }
-
-        @Override
-        public Collection<? extends Task<?>> getDependents() {
-            return List.of(task);
-        }
-
-        @Override
-        public boolean isRelyingOnDependents() {
-            return false;
-        }
-
-        @Override
-        public void execute() throws Exception {
-            if (isDependentsSucceeded()) {
-                setResult(task.getResult());
-            } else {
-                dependencies = List.of(fallback);
-                fallback.storeTo(this::setResult);
-            }
-        }
-
-        @Override
-        public List<Task<?>> getDependencies() {
-            return dependencies;
-        }
-    }
-
-    private record MirrorRule(String source, String target, boolean fallback) {
-        public MirrorRule(String source, String target) {
-            this(source, target, false);
-        }
+    /// Prefix replacement that maps an official URL onto the mirror root.
+    ///
+    /// @param source the official URL prefix
+    /// @param target the mirror prefix replacing it
+    private record MirrorRule(String source, String target) {
     }
 }
-
