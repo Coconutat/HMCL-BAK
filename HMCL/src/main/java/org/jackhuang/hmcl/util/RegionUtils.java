@@ -45,8 +45,19 @@ public final class RegionUtils {
         }
     }
 
-    private static final boolean IS_CHINA_MAINLAND_MACHINE = checkMachineIsChinaMainland();
+    /// Whether the launcher treats the machine as located in China Mainland.
+    ///
+    /// Always false in this fork: every download goes to the official servers, so no feature may
+    /// depend on the region, and no third-party IP lookup (`ipwho.is`) is performed at startup.
+    /// [#checkMachineIsChinaMainland()] is kept unused on purpose, to keep upstream merges cheap.
+    private static final boolean IS_CHINA_MAINLAND_MACHINE = false;
 
+    /// Detects whether the machine is located in China Mainland by time zone, locale and geo ID.
+    ///
+    /// Unused in this fork, where [#IS_CHINA_MAINLAND_MACHINE] is hard-wired to false.
+    ///
+    /// @return true if the machine looks like it is in China Mainland
+    @SuppressWarnings("unused")
     private static boolean checkMachineIsChinaMainland() {
         if ("Asia/Shanghai".equals(ZoneId.systemDefault().getId()))
             return true;
