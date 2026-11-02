@@ -835,6 +835,7 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
         private Tooltip warningTooltip;
 
+        /// Creates a selectable mod row with file actions for the supplied page.
         ModInfoListCell(JFXListView<ModInfoObject> listView, ModListPage page) {
             super(listView);
             this.page = page;
@@ -845,7 +846,6 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             container.setPickOnBounds(false);
             container.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(content, Priority.ALWAYS);
-            content.setMouseTransparent(true);
             setSelectable();
 
             imageContainer.setImage(GameInstanceIconType.COMMAND.getIcon());
@@ -859,8 +859,9 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             getContainer().getChildren().setAll(container);
         }
 
+        /// Updates mod details, warnings, and tags while retaining reusable tag labels.
         @Override
-        protected void updateControl(ModInfoObject dataItem, boolean empty) {
+        protected void updateControl(@Nullable ModInfoObject dataItem, boolean empty) {
             if (observedActiveProperty != null)
                 observedActiveProperty.removeListener(weakActiveListener);
             if (observedPinnedProperty != null)
@@ -872,11 +873,11 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
                 warningTooltip = null;
             }
 
-            if (empty) return;
+            if (empty || dataItem == null) return;
 
             List<String> warning = new ArrayList<>();
 
-            content.getTags().clear();
+            var tags = new ArrayList<Tag>(2);
 
             LocalModFile modInfo = dataItem.getModInfo();
             @Nullable ModProjectInfo projectInfo = dataItem.getProjectInfo();
@@ -916,16 +917,18 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             content.setSubtitle(joiner.toString());
 
             if (modLoaderType == ModLoaderType.UNKNOWN) {
-                content.addTagWarning(i18n("mods.unknown"));
+                tags.add(Tag.warning(i18n("mods.unknown")));
             } else if (!page.supportedLoaders.contains(modLoaderType)) {
                 warning.add(i18n("mods.warning.loader_mismatch"));
-                content.addTagWarning(I18n.translateLoaderType(dataItem.getModInfo().getModLoaderType()));
+                tags.add(Tag.warning(I18n.translateLoaderType(dataItem.getModInfo().getModLoaderType())));
             }
 
             String modVersion = modInfo.getVersion();
             if (StringUtils.isNotBlank(modVersion) && !"${version}".equals(modVersion)) {
-                content.addTag(modVersion);
+                tags.add(new Tag(modVersion));
             }
+
+            content.getTags().setAll(tags);
 
             (observedActiveProperty = modInfo.activeProperty()).addListener(weakActiveListener);
             checkBox.setSelected(modInfo.isActive());
