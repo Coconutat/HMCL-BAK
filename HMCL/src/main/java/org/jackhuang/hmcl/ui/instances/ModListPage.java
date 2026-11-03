@@ -979,7 +979,7 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             }
 
             String text = i18n("mods.pinned");
-            content.getTags().removeIf(label -> text.equals(label.getText()));
+            content.getTags().removeIf(tag -> text.equals(tag.text()));
             if (item.isPinned()) {
                 content.addTag(text);
             }
