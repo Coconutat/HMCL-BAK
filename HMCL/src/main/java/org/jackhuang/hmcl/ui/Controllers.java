@@ -183,7 +183,7 @@ public final class Controllers {
     /// The cached settings page.
     private static @Nullable LauncherSettingsPage settingsPage;
 
-    /// Creates and attaches the settings page for a layout pulse unless already cached.
+    /// Creates and prewarms the settings page unless already cached.
     @FXThread
     public static void prepareSettingsPage() {
         if (settingsPage == null) {
