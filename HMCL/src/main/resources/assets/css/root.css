@@ -1342,22 +1342,69 @@
     -jfx-mask-type: CIRCLE;
 }
 
-/* Row action that disables the update checks of a mod, revealed on row hover. */
-.pause-button .svg {
+/* Row action that opens the action menu of a mod. */
+.row-menu-button .svg {
     -fx-fill: -monet-on-surface-variant;
 }
 
-.pause-button:hover .svg,
-.pause-button:focused .svg {
+.row-menu-button:hover .svg,
+.row-menu-button:focused .svg {
     -fx-fill: -monet-on-surface;
 }
 
-.pause-button:pinned .svg {
+.row-menu-button:updates-disabled .svg {
     -fx-fill: -monet-primary;
 }
 
-.pause-button:disabled .svg {
+.row-menu-button:disabled .svg {
     -fx-fill: -monet-on-surface-variant-transparent-38;
+}
+
+/* MD3 menu opened from a mod row. */
+.md3-menu-scroll {
+    -fx-background-color: -monet-surface-container;
+    -fx-background-radius: 4;
+    -fx-padding: 0;
+}
+
+.md3-menu-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.md3-menu {
+    -fx-background-color: -monet-surface-container;
+    -fx-padding: 8 0 8 0;
+}
+
+.md3-menu .md3-menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-text-fill: -monet-on-surface;
+    -fx-font-size: 14px;
+    -fx-graphic-text-gap: 14px;
+    -fx-padding: 0 16 0 16;
+    -fx-min-width: 200px;
+    -fx-min-height: 48px;
+    -fx-pref-height: 48px;
+}
+
+.md3-menu .md3-menu-item .svg {
+    -fx-fill: -monet-on-surface-variant;
+}
+
+.md3-menu .md3-menu-item:hover {
+    -fx-background-color: -monet-surface-container-highest;
+}
+
+.md3-menu .md3-menu-item:disabled {
+    -fx-opacity: 0.38;
+}
+
+.md3-menu-separator {
+    -fx-min-height: 1px;
+    -fx-pref-height: 1px;
+    -fx-max-height: 1px;
+    -fx-background-color: -monet-outline-variant;
 }
 
 .toggle-icon-tiny {

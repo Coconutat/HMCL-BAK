@@ -25,7 +25,9 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
 import org.jackhuang.hmcl.addon.AddonLoader;
@@ -812,42 +814,34 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
         }
     }
 
-    private static final Lazy<PopupMenu> menu = new Lazy<>(PopupMenu::new);
-    private static final Lazy<JFXPopup> popup = new Lazy<>(() -> new JFXPopup(menu.get()));
-
     private static final class ModInfoListCell extends MDListCell<ModInfoObject> {
         private static final PseudoClass WARNING = PseudoClass.getPseudoClass("warning");
-        /// Drives the disabled styling of [#pauseButton].
-        private static final PseudoClass PINNED = PseudoClass.getPseudoClass("pinned");
+        /// Drives the disabled styling of [#menuButton].
+        private static final PseudoClass UPDATES_DISABLED = PseudoClass.getPseudoClass("updates-disabled");
 
         private final ModListPage page;
 
         private final ImageContainer imageContainer = new ImageContainer(32);
         private final TwoLineListItem content = new TwoLineListItem();
-        private final JFXButton restoreButton = FXUtils.newToggleButton4(SVG.RESTORE);
-        private final JFXButton pauseButton = FXUtils.newToggleButton4(SVG.PAUSE);
-        /// Tooltip of [#pauseButton].
-        private final Tooltip pauseTooltip = new Tooltip(i18n("mods.pin"));
-        private final JFXButton revealButton = FXUtils.newToggleButton4(SVG.FOLDER);
-        private final JFXButton infoButton = FXUtils.newToggleButton4(SVG.INFO);
+        private final JFXButton menuButton = FXUtils.newToggleButton4(SVG.MENU);
+        /// Tooltip of [#menuButton].
+        private final Tooltip menuTooltip = new Tooltip(i18n("mods.menu"));
+        private final VBox menuBox = new VBox();
+        private final ScrollPane menuScroll = new ScrollPane(menuBox);
+        private final JFXPopup menuPopup = new JFXPopup(menuScroll);
         private final JFXSwitch activeSwitch = new JFXSwitch();
 
         private final InvalidationListener activeListener = obs -> activeSwitch.setSelected(getItem().getModInfo().isActive());
         private final WeakInvalidationListener weakActiveListener = new WeakInvalidationListener(activeListener);
         private @Nullable ReadOnlyBooleanProperty observedActiveProperty;
 
-        private final InvalidationListener pinnedListener = obs -> applyPinState(getItem());
+        private final InvalidationListener pinnedListener = obs -> applyUpdatesDisabled(getItem());
         private final WeakInvalidationListener weakPinnedListener = new WeakInvalidationListener(pinnedListener);
         private @Nullable ReadOnlyBooleanProperty observedPinnedProperty;
 
         private Tooltip warningTooltip;
 
-        /// Whether the pointer currently rests on this row.
-        private boolean rowHovered;
-        /// Whether the update checks of this row are disabled.
-        private boolean updatesDisabled;
-
-        /// Creates a selectable mod row with file actions for the supplied page.
+        /// Creates a selectable mod row with a file action menu for the supplied page.
         ModInfoListCell(JFXListView<ModInfoObject> listView, ModListPage page) {
             super(listView);
             this.page = page;
@@ -863,15 +857,26 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
             imageContainer.setImage(GameInstanceIconType.COMMAND.getIcon());
 
-            pauseButton.getStyleClass().add("pause-button");
-            FXUtils.installFastTooltip(pauseButton, pauseTooltip);
-            setOnMouseEntered(e -> setRowHovered(true));
-            setOnMouseExited(e -> setRowHovered(false));
-            FXUtils.installFastTooltip(restoreButton, i18n("mods.restore"));
+            menuButton.getStyleClass().add("row-menu-button");
+            FXUtils.installFastTooltip(menuButton, menuTooltip);
+            menuButton.setOnAction(e -> {
+                if (menuPopup.isShowing()) {
+                    menuPopup.hide();
+                } else {
+                    showMenu();
+                }
+            });
+
+            menuScroll.setFitToWidth(true);
+            menuScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+            menuScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+            menuScroll.setMaxHeight(320);
+            menuScroll.getStyleClass().add("md3-menu-scroll");
+            menuBox.getStyleClass().add("md3-menu");
 
             HBox actions = new HBox();
             actions.setAlignment(Pos.CENTER);
-            actions.getChildren().setAll(restoreButton, pauseButton, revealButton, infoButton, activeSwitch);
+            actions.getChildren().setAll(menuButton, activeSwitch);
 
             activeSwitch.setSize(24);
             activeSwitch.setMinSize(30, 30);
@@ -968,27 +973,12 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
                     activeSwitch.setSelected(modInfo.isActive());
                 }
             });
-            // Managed as well, so the remaining actions keep their position when there is no file to restore.
-            boolean hasOldFiles = !modInfo.getMod().getOldFiles().isEmpty();
-            restoreButton.setVisible(hasOldFiles);
-            restoreButton.setManaged(hasOldFiles);
-            restoreButton.setOnAction(e -> {
-                menu.get().getContent().setAll(modInfo.getMod().getOldFiles().stream()
-                        .map(localModFile -> new IconedMenuItem(null, localModFile.getVersion(),
-                                () -> page.rollback(modInfo, localModFile),
-                                popup.get()))
-                        .toList()
-                );
-
-                popup.get().show(restoreButton, JFXPopup.PopupVPosition.TOP, JFXPopup.PopupHPosition.RIGHT, 0, restoreButton.getHeight());
-            });
-            revealButton.setOnAction(e -> FXUtils.showFileInExplorer(modInfo.getFile()));
-            infoButton.setOnAction(e -> Controllers.dialog(new ModInfoDialog(dataItem)));
-
-            pauseButton.setDisable(modInfo.isOld());
             (observedPinnedProperty = dataItem.pinnedProperty()).addListener(weakPinnedListener);
-            applyPinState(dataItem);
-            pauseButton.setOnAction(e -> page.setPinned(List.of(dataItem), !dataItem.isPinned()));
+            applyUpdatesDisabled(dataItem);
+
+            if (menuPopup.isShowing()) {
+                menuPopup.hide();
+            }
 
             if (!warning.isEmpty()) {
                 pseudoClassStateChanged(WARNING, true);
@@ -1001,31 +991,63 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             }
         }
 
-        /// Mirrors the disabled state of the supplied item on [#pauseButton].
-        private void applyPinState(@Nullable ModInfoObject item) {
+        /// Mirrors the disabled update checks of the supplied item on [#menuButton].
+        private void applyUpdatesDisabled(@Nullable ModInfoObject item) {
             if (item == null) {
                 return;
             }
 
-            updatesDisabled = item.isPinned();
-            pauseButton.setGraphic((updatesDisabled ? SVG.PAUSE_FILL : SVG.PAUSE).createIcon());
-            pauseButton.pseudoClassStateChanged(PINNED, updatesDisabled);
-            pauseTooltip.setText(i18n(updatesDisabled ? "mods.unpin" : "mods.pin"));
-            refreshPauseButton();
+            menuButton.pseudoClassStateChanged(UPDATES_DISABLED, item.isPinned());
         }
 
-        /// Records the pointer position and refreshes [#pauseButton].
-        private void setRowHovered(boolean hovered) {
-            rowHovered = hovered;
-            refreshPauseButton();
+        /// Opens the action menu of the current row below [#menuButton].
+        private void showMenu() {
+            ModInfoObject item = getItem();
+            if (item == null) {
+                return;
+            }
+
+            LocalModFile modInfo = item.getModInfo();
+            List<Node> entries = new ArrayList<>();
+
+            for (LocalModFile oldFile : modInfo.getMod().getOldFiles()) {
+                String version = Objects.toString(oldFile.getVersion(), "");
+                entries.add(createMenuItem(SVG.RESTORE, i18n("mods.restore.to", version),
+                        () -> page.rollback(modInfo, oldFile)));
+            }
+
+            entries.add(createMenuItem(SVG.INFO, i18n("mods.info"),
+                    () -> Controllers.dialog(new ModInfoDialog(item))));
+            entries.add(createMenuItem(SVG.FOLDER_OPEN, i18n("button.reveal_dir"),
+                    () -> FXUtils.showFileInExplorer(modInfo.getFile())));
+
+            Region separator = new Region();
+            separator.getStyleClass().add("md3-menu-separator");
+            entries.add(separator);
+
+            boolean disabled = item.isPinned();
+            Node updatesEntry = createMenuItem(disabled ? SVG.PAUSE_FILL : SVG.PAUSE,
+                    i18n(disabled ? "mods.unpin" : "mods.pin"),
+                    () -> page.setPinned(List.of(item), !disabled));
+            updatesEntry.setDisable(modInfo.isOld());
+            entries.add(updatesEntry);
+
+            menuBox.getChildren().setAll(entries);
+            menuPopup.show(menuButton, JFXPopup.PopupVPosition.TOP, JFXPopup.PopupHPosition.RIGHT, 0, menuButton.getHeight() + 4);
         }
 
-        /// Reveals [#pauseButton] while the row is hovered or its update checks are disabled.
-        private void refreshPauseButton() {
-            boolean shown = rowHovered || updatesDisabled;
-            pauseButton.setVisible(shown);
-            pauseButton.setManaged(shown);
-            pauseButton.setMouseTransparent(!shown);
+        /// Creates one entry of the row menu and closes the menu before running its action.
+        private Node createMenuItem(SVG icon, String text, Runnable action) {
+            JFXButton entry = new JFXButton(text);
+            entry.getStyleClass().add("md3-menu-item");
+            entry.setGraphic(icon.createIcon(20));
+            entry.setMaxWidth(Double.MAX_VALUE);
+            entry.setAlignment(Pos.CENTER_LEFT);
+            entry.setOnAction(e -> {
+                menuPopup.hide();
+                action.run();
+            });
+            return entry;
         }
 
     }
