@@ -817,12 +817,17 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
     private static final class ModInfoListCell extends MDListCell<ModInfoObject> {
         private static final PseudoClass WARNING = PseudoClass.getPseudoClass("warning");
+        /// Drives the disabled styling of [#pauseButton].
+        private static final PseudoClass PINNED = PseudoClass.getPseudoClass("pinned");
 
         private final ModListPage page;
 
         private final ImageContainer imageContainer = new ImageContainer(32);
         private final TwoLineListItem content = new TwoLineListItem();
         private final JFXButton restoreButton = FXUtils.newToggleButton4(SVG.RESTORE);
+        private final JFXButton pauseButton = FXUtils.newToggleButton4(SVG.PAUSE);
+        /// Tooltip of [#pauseButton].
+        private final Tooltip pauseTooltip = new Tooltip(i18n("mods.pin"));
         private final JFXButton revealButton = FXUtils.newToggleButton4(SVG.FOLDER);
         private final JFXButton infoButton = FXUtils.newToggleButton4(SVG.INFO);
         private final JFXSwitch activeSwitch = new JFXSwitch();
@@ -836,6 +841,11 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
         private @Nullable ReadOnlyBooleanProperty observedPinnedProperty;
 
         private Tooltip warningTooltip;
+
+        /// Whether the pointer currently rests on this row.
+        private boolean rowHovered;
+        /// Whether the update checks of this row are disabled.
+        private boolean updatesDisabled;
 
         /// Creates a selectable mod row with file actions for the supplied page.
         ModInfoListCell(JFXListView<ModInfoObject> listView, ModListPage page) {
@@ -853,11 +863,15 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
             imageContainer.setImage(GameInstanceIconType.COMMAND.getIcon());
 
+            pauseButton.getStyleClass().add("pause-button");
+            FXUtils.installFastTooltip(pauseButton, pauseTooltip);
+            setOnMouseEntered(e -> setRowHovered(true));
+            setOnMouseExited(e -> setRowHovered(false));
             FXUtils.installFastTooltip(restoreButton, i18n("mods.restore"));
 
             HBox actions = new HBox();
             actions.setAlignment(Pos.CENTER);
-            actions.getChildren().setAll(restoreButton, revealButton, infoButton, activeSwitch);
+            actions.getChildren().setAll(restoreButton, pauseButton, revealButton, infoButton, activeSwitch);
 
             activeSwitch.setSize(24);
             activeSwitch.setMinSize(30, 30);
@@ -971,8 +985,10 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             revealButton.setOnAction(e -> FXUtils.showFileInExplorer(modInfo.getFile()));
             infoButton.setOnAction(e -> Controllers.dialog(new ModInfoDialog(dataItem)));
 
+            pauseButton.setDisable(modInfo.isOld());
             (observedPinnedProperty = dataItem.pinnedProperty()).addListener(weakPinnedListener);
             applyPinState(dataItem);
+            pauseButton.setOnAction(e -> page.setPinned(List.of(dataItem), !dataItem.isPinned()));
 
             if (!warning.isEmpty()) {
                 pseudoClassStateChanged(WARNING, true);
@@ -985,17 +1001,31 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             }
         }
 
-        /// Shows or hides the paused tag of the cell.
+        /// Mirrors the disabled state of the supplied item on [#pauseButton].
         private void applyPinState(@Nullable ModInfoObject item) {
             if (item == null) {
                 return;
             }
 
-            String text = i18n("mods.pinned");
-            content.getTags().removeIf(tag -> text.equals(tag.text()));
-            if (item.isPinned()) {
-                content.addTag(text);
-            }
+            updatesDisabled = item.isPinned();
+            pauseButton.setGraphic((updatesDisabled ? SVG.PAUSE_FILL : SVG.PAUSE).createIcon());
+            pauseButton.pseudoClassStateChanged(PINNED, updatesDisabled);
+            pauseTooltip.setText(i18n(updatesDisabled ? "mods.unpin" : "mods.pin"));
+            refreshPauseButton();
+        }
+
+        /// Records the pointer position and refreshes [#pauseButton].
+        private void setRowHovered(boolean hovered) {
+            rowHovered = hovered;
+            refreshPauseButton();
+        }
+
+        /// Reveals [#pauseButton] while the row is hovered or its update checks are disabled.
+        private void refreshPauseButton() {
+            boolean shown = rowHovered || updatesDisabled;
+            pauseButton.setVisible(shown);
+            pauseButton.setManaged(shown);
+            pauseButton.setMouseTransparent(!shown);
         }
 
     }
