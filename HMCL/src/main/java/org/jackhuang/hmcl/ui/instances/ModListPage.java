@@ -3,6 +3,7 @@
 package org.jackhuang.hmcl.ui.instances;
 
 import com.jfoenix.controls.*;
+import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
@@ -23,6 +24,7 @@ import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -816,20 +818,29 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
     private static final class ModInfoListCell extends MDListCell<ModInfoObject> {
         private static final PseudoClass WARNING = PseudoClass.getPseudoClass("warning");
-        /// Drives the disabled styling of [#menuButton].
+        /// Drives the disabled styling of [#expandButton].
         private static final PseudoClass UPDATES_DISABLED = PseudoClass.getPseudoClass("updates-disabled");
+        /// Drives the expanded styling of [#expandButton].
+        private static final PseudoClass EXPANDED = PseudoClass.getPseudoClass("expanded");
 
         private final ModListPage page;
 
         private final ImageContainer imageContainer = new ImageContainer(32);
         private final TwoLineListItem content = new TwoLineListItem();
-        private final JFXButton menuButton = FXUtils.newToggleButton4(SVG.MENU);
-        /// Tooltip of [#menuButton].
-        private final Tooltip menuTooltip = new Tooltip(i18n("mods.menu"));
-        private final VBox menuBox = new VBox();
-        private final ScrollPane menuScroll = new ScrollPane(menuBox);
-        private final JFXPopup menuPopup = new JFXPopup(menuScroll);
+        /// Toggles [#detailHolder] and carries the update state of this row.
+        private final JFXButton expandButton = FXUtils.newToggleButton4(SVG.EXPAND_MORE);
         private final JFXSwitch activeSwitch = new JFXSwitch();
+
+        /// Shows the description of the current mod.
+        private final Label detailDescription = new Label();
+        /// Shows the authors and the file name of the current mod.
+        private final Label detailMeta = new Label();
+        /// Holds the actions of the current mod.
+        private final FlowPane detailActions = new FlowPane();
+        /// Card that holds [#detailDescription], [#detailMeta] and [#detailActions].
+        private final VBox detailCard = new VBox(detailDescription, detailMeta, detailActions);
+        /// Indented wrapper of [#detailCard] that [#expandButton] toggles.
+        private final VBox detailHolder = new VBox(detailCard);
 
         private final InvalidationListener activeListener = obs -> activeSwitch.setSelected(getItem().getModInfo().isActive());
         private final WeakInvalidationListener weakActiveListener = new WeakInvalidationListener(activeListener);
@@ -839,44 +850,33 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
         private final WeakInvalidationListener weakPinnedListener = new WeakInvalidationListener(pinnedListener);
         private @Nullable ReadOnlyBooleanProperty observedPinnedProperty;
 
+        /// Whether [#detailHolder] is currently shown.
+        private boolean expanded;
+
         private Tooltip warningTooltip;
 
-        /// Creates a selectable mod row with a file action menu for the supplied page.
+        /// Creates a selectable mod row with an expandable detail panel for the supplied page.
         ModInfoListCell(JFXListView<ModInfoObject> listView, ModListPage page) {
             super(listView);
             this.page = page;
 
             this.getStyleClass().add("mod-info-list-cell");
 
-            HBox container = new HBox(8);
-            container.setPickOnBounds(false);
-            container.setAlignment(Pos.CENTER_LEFT);
-            container.setPadding(new Insets(0, 8, 0, 8));
+            HBox row = new HBox(8);
+            row.setPickOnBounds(false);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.setPadding(new Insets(8, 8, 8, 8));
             HBox.setHgrow(content, Priority.ALWAYS);
             setSelectable();
 
             imageContainer.setImage(GameInstanceIconType.COMMAND.getIcon());
 
-            menuButton.getStyleClass().add("row-menu-button");
-            FXUtils.installFastTooltip(menuButton, menuTooltip);
-            menuButton.setOnAction(e -> {
-                if (menuPopup.isShowing()) {
-                    menuPopup.hide();
-                } else {
-                    showMenu();
-                }
-            });
-
-            menuScroll.setFitToWidth(true);
-            menuScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-            menuScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-            menuScroll.setMaxHeight(320);
-            menuScroll.getStyleClass().add("md3-menu-scroll");
-            menuBox.getStyleClass().add("md3-menu");
+            expandButton.getStyleClass().add("row-expand-button");
+            expandButton.setOnAction(e -> setExpanded(!expanded));
 
             HBox actions = new HBox();
             actions.setAlignment(Pos.CENTER);
-            actions.getChildren().setAll(menuButton, activeSwitch);
+            actions.getChildren().setAll(expandButton, activeSwitch);
 
             activeSwitch.setSize(24);
             activeSwitch.setMinSize(30, 30);
@@ -884,10 +884,21 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             activeSwitch.setMaxSize(30, 30);
             HBox.setMargin(activeSwitch, new Insets(0, 0, 0, 8));
 
-            container.getChildren().setAll(imageContainer, content, actions);
+            row.getChildren().setAll(imageContainer, content, actions);
 
-            StackPane.setMargin(container, new Insets(8));
-            getContainer().getChildren().setAll(container);
+            detailDescription.getStyleClass().add("mod-detail-description");
+            detailDescription.setWrapText(true);
+            detailMeta.getStyleClass().add("mod-detail-meta");
+            detailActions.setHgap(8);
+            detailActions.setVgap(8);
+            detailCard.getStyleClass().add("mod-detail-card");
+            detailCard.setSpacing(10);
+            detailHolder.getStyleClass().add("mod-detail-holder");
+            detailHolder.setVisible(false);
+            detailHolder.setManaged(false);
+
+            VBox body = new VBox(row, detailHolder);
+            getContainer().getChildren().setAll(body);
         }
 
         /// Updates mod details, warnings, and tags while retaining reusable tag labels.
@@ -897,6 +908,8 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
                 observedActiveProperty.removeListener(weakActiveListener);
             if (observedPinnedProperty != null)
                 observedPinnedProperty.removeListener(weakPinnedListener);
+
+            setExpanded(false);
 
             pseudoClassStateChanged(WARNING, false);
             if (warningTooltip != null) {
@@ -976,10 +989,6 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             (observedPinnedProperty = dataItem.pinnedProperty()).addListener(weakPinnedListener);
             applyUpdatesDisabled(dataItem);
 
-            if (menuPopup.isShowing()) {
-                menuPopup.hide();
-            }
-
             if (!warning.isEmpty()) {
                 pseudoClassStateChanged(WARNING, true);
 
@@ -991,63 +1000,90 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             }
         }
 
-        /// Mirrors the disabled update checks of the supplied item on [#menuButton].
+        /// Shows or hides [#detailHolder] and keeps [#expandButton] in sync.
+        private void setExpanded(boolean expanded) {
+            this.expanded = expanded;
+            expandButton.setGraphic((expanded ? SVG.EXPAND_LESS : SVG.EXPAND_MORE).createIcon());
+            expandButton.pseudoClassStateChanged(EXPANDED, expanded);
+            if (expanded) {
+                refreshDetails();
+                detailHolder.setOpacity(0);
+                FadeTransition fade = new FadeTransition(Duration.millis(150), detailHolder);
+                fade.setFromValue(0);
+                fade.setToValue(1);
+                fade.play();
+            }
+            detailHolder.setVisible(expanded);
+            detailHolder.setManaged(expanded);
+        }
+
+        /// Mirrors the disabled update checks of the supplied item on [#expandButton].
         private void applyUpdatesDisabled(@Nullable ModInfoObject item) {
             if (item == null) {
                 return;
             }
 
-            menuButton.pseudoClassStateChanged(UPDATES_DISABLED, item.isPinned());
+            expandButton.pseudoClassStateChanged(UPDATES_DISABLED, item.isPinned());
         }
 
-        /// Opens the action menu of the current row below [#menuButton].
-        private void showMenu() {
+        /// Fills [#detailCard] with the information and the actions of the current item.
+        private void refreshDetails() {
             ModInfoObject item = getItem();
             if (item == null) {
                 return;
             }
 
             LocalModFile modInfo = item.getModInfo();
-            List<Node> entries = new ArrayList<>();
+
+            String description = modInfo.getDescription().toStringSingleLine().trim();
+            detailDescription.setText(description);
+            detailDescription.setVisible(!description.isEmpty());
+            detailDescription.setManaged(!description.isEmpty());
+
+            List<String> meta = new ArrayList<>(2);
+            String authors = modInfo.getAuthors();
+            if (StringUtils.isNotBlank(authors)) {
+                meta.add(i18n("archive.author") + ": " + authors);
+            }
+            meta.add(modInfo.getFileName());
+            detailMeta.setText(String.join("  ·  ", meta));
+
+            List<Node> buttons = new ArrayList<>();
 
             for (LocalModFile oldFile : modInfo.getMod().getOldFiles()) {
                 String version = Objects.toString(oldFile.getVersion(), "");
-                entries.add(createMenuItem(SVG.RESTORE, i18n("mods.restore.to", version),
+                buttons.add(createDetailButton(i18n("mods.restore.to", version), false,
                         () -> page.rollback(modInfo, oldFile)));
             }
 
-            entries.add(createMenuItem(SVG.INFO, i18n("mods.info"),
-                    () -> Controllers.dialog(new ModInfoDialog(item))));
-            entries.add(createMenuItem(SVG.FOLDER_OPEN, i18n("button.reveal_dir"),
+            boolean updatesDisabled = item.isPinned();
+            Node updatesButton = createDetailButton(i18n(updatesDisabled ? "mods.unpin" : "mods.pin"), true,
+                    () -> page.setPinned(List.of(item), !updatesDisabled));
+            updatesButton.setDisable(modInfo.isOld());
+            buttons.add(updatesButton);
+
+            buttons.add(createDetailButton(i18n("button.reveal_dir"), false,
                     () -> FXUtils.showFileInExplorer(modInfo.getFile())));
+            buttons.add(createDetailButton(i18n("mods.info"), false,
+                    () -> Controllers.dialog(new ModInfoDialog(item))));
 
-            Region separator = new Region();
-            separator.getStyleClass().add("md3-menu-separator");
-            entries.add(separator);
-
-            boolean disabled = item.isPinned();
-            Node updatesEntry = createMenuItem(disabled ? SVG.PAUSE_FILL : SVG.PAUSE,
-                    i18n(disabled ? "mods.unpin" : "mods.pin"),
-                    () -> page.setPinned(List.of(item), !disabled));
-            updatesEntry.setDisable(modInfo.isOld());
-            entries.add(updatesEntry);
-
-            menuBox.getChildren().setAll(entries);
-            menuPopup.show(menuButton, JFXPopup.PopupVPosition.TOP, JFXPopup.PopupHPosition.RIGHT, 0, menuButton.getHeight() + 4);
+            detailActions.getChildren().setAll(buttons);
         }
 
-        /// Creates one entry of the row menu and closes the menu before running its action.
-        private Node createMenuItem(SVG icon, String text, Runnable action) {
-            JFXButton entry = new JFXButton(text);
-            entry.getStyleClass().add("md3-menu-item");
-            entry.setGraphic(icon.createIcon(20));
-            entry.setMaxWidth(Double.MAX_VALUE);
-            entry.setAlignment(Pos.CENTER_LEFT);
-            entry.setOnAction(e -> {
-                menuPopup.hide();
+        /// Creates one button of [#detailActions] and refreshes the panel after it ran.
+        private JFXButton createDetailButton(String text, boolean tonal, Runnable action) {
+            JFXButton button = new JFXButton(text);
+            button.getStyleClass().addAll("md3-button", tonal ? "md3-button-tonal" : "md3-button-outlined");
+            button.setOnAction(e -> {
+                ModInfoObject current = getItem();
                 action.run();
+                Platform.runLater(() -> {
+                    if (expanded && getItem() == current) {
+                        refreshDetails();
+                    }
+                });
             });
-            return entry;
+            return button;
         }
 
     }
