@@ -1342,6 +1342,24 @@
     -jfx-mask-type: CIRCLE;
 }
 
+/* MD3 toggle icon button that pins a mod, the pinned state uses the primary role. */
+.pin-button .svg {
+    -fx-fill: -monet-on-surface-variant;
+}
+
+.pin-button:hover .svg,
+.pin-button:armed .svg {
+    -fx-fill: -monet-on-surface;
+}
+
+.pin-button:pinned .svg {
+    -fx-fill: -monet-primary;
+}
+
+.pin-button:disabled .svg {
+    -fx-fill: -monet-on-surface-variant-transparent-38;
+}
+
 .toggle-icon-tiny {
     -fx-toggle-icon-tiny-size: 15px;
     -fx-pref-width: -fx-toggle-icon-tiny-size;

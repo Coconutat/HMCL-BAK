@@ -456,7 +456,7 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
                 var selectAll = createToolbarButton2(i18n("button.select_all"), SVG.SELECT_ALL, () -> listView.getSelectionModel().selectRange(0, listView.getItems().size()));
 
                 // Pins or unpins every selected mod at once.
-                pinSelected = createToolbarButton2(i18n("mods.pin"), SVG.KEEP, () ->
+                pinSelected = createToolbarButton2(i18n("mods.pin"), SVG.PAUSE, () ->
                         skinnable.setPinned(listView.getSelectionModel().getSelectedItems(), !allPinned()));
                 skinnable.pinnedStateChanged = this::updatePinSelectedButton;
 
@@ -585,7 +585,7 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
         private void updatePinSelectedButton() {
             boolean allPinned = allPinned();
             pinSelected.setText(i18n(allPinned ? "mods.unpin" : "mods.pin"));
-            pinSelected.setGraphic((allPinned ? SVG.KEEP_FILL : SVG.KEEP).createIcon(20));
+            pinSelected.setGraphic((allPinned ? SVG.PAUSE_FILL : SVG.PAUSE).createIcon(20));
         }
 
         private void search() {
@@ -817,12 +817,14 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
     private static final class ModInfoListCell extends MDListCell<ModInfoObject> {
         private static final PseudoClass WARNING = PseudoClass.getPseudoClass("warning");
+        /// Drives the pinned styling of [#pinButton].
+        private static final PseudoClass PINNED = PseudoClass.getPseudoClass("pinned");
 
         private final ModListPage page;
 
         private final ImageContainer imageContainer = new ImageContainer(32);
         private final TwoLineListItem content = new TwoLineListItem();
-        private final JFXButton pinButton = FXUtils.newToggleButton4(SVG.KEEP);
+        private final JFXButton pinButton = FXUtils.newToggleButton4(SVG.PAUSE);
         /// Tooltip of [#pinButton].
         private final Tooltip pinTooltip = new Tooltip(i18n("mods.pin"));
         private final JFXButton restoreButton = FXUtils.newToggleButton4(SVG.RESTORE);
@@ -856,6 +858,7 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
 
             imageContainer.setImage(GameInstanceIconType.COMMAND.getIcon());
 
+            pinButton.getStyleClass().add("pin-button");
             FXUtils.installFastTooltip(pinButton, pinTooltip);
             FXUtils.installFastTooltip(restoreButton, i18n("mods.restore"));
 
@@ -991,20 +994,22 @@ public final class ModListPage extends ListPageBase<ModListPage.ModInfoObject> i
             }
         }
 
-        /// Updates the pin tag, icon and tooltip of the cell.
+        /// Updates the pin tag, icon, color and tooltip of the cell.
         private void applyPinState(@Nullable ModInfoObject item) {
             if (item == null) {
                 return;
             }
 
+            boolean pinned = item.isPinned();
             String text = i18n("mods.pinned");
             content.getTags().removeIf(tag -> text.equals(tag.text()));
-            if (item.isPinned()) {
+            if (pinned) {
                 content.addTag(text);
             }
-            // A pinned mod shows the filled glyph.
-            pinButton.setGraphic((item.isPinned() ? SVG.KEEP_FILL : SVG.KEEP).createIcon());
-            pinTooltip.setText(i18n(item.isPinned() ? "mods.unpin" : "mods.pin"));
+            // A pinned mod shows the filled glyph in the primary color.
+            pinButton.setGraphic((pinned ? SVG.PAUSE_FILL : SVG.PAUSE).createIcon());
+            pinButton.pseudoClassStateChanged(PINNED, pinned);
+            pinTooltip.setText(i18n(pinned ? "mods.unpin" : "mods.pin"));
         }
 
     }
